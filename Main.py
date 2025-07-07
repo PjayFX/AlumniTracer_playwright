@@ -50,13 +50,15 @@ def get_names_from_csv(file_path: str) -> List[str]:
     else:
         raise ValueError("CSV file must contain a 'names' column.")
 
-def linkedin_login(page: Page, credentials: Dict[str, str]) -> None:
+def linkedin_login(page: Page, credentials: Dict[str, str]) -> bool:
     """
     Logs into LinkedIn using the provided credentials.
 
     Args:
         page (Page): Playwright page object.
         credentials (Dict[str, str]): Dictionary containing 'username' and 'password'.
+    Returns:
+        bool: True if login successful, False if verification required.
     """
     print("Opening LinkedIn login page...")
     page.goto("https://www.linkedin.com/login", timeout=60000)
@@ -73,16 +75,27 @@ def linkedin_login(page: Page, credentials: Dict[str, str]) -> None:
 
     # Check for verification prompt
     try:
-        verification_header = page.query_selector("h1.content__header")
-        if verification_header and "Let’s do a quick verification" in verification_header.inner_text():
-            print("Verification required. Returning to input credentials.")
-            return
+        # Try both the specific and generic h1 selectors
+        headers = []
+        header_specific = page.query_selector("h1.content__header")
+        if header_specific:
+            headers.append(header_specific)
+        headers.extend(page.query_selector_all("h1"))
+
+        for header in headers:
+            text = header.inner_text().strip().lower().replace("’", "'")
+            print(f"Found h1: {text}")  # Debug print
+            if ("let's do a quick verification" in text) or ("let's do a quick security check" in text):
+                print("Verification required. Returning to input credentials.")
+                return False  # Indicate login failed due to verification
+        print("No verification header matched.")
     except Exception as e:
         print(f"Error checking for verification prompt: {e}")
 
     # Wait for LinkedIn homepage to load
     page.wait_for_selector("input[placeholder='Search']", timeout=60000)
     print("LinkedIn homepage loaded successfully.")
+    return True  # Indicate login succeeded
 
 def extract_profile_data(page: Page) -> Dict[str, str]:
     """
@@ -351,7 +364,14 @@ def open_linkedin_login_and_search(credentials: Dict[str, str], names: List[str]
                 context = browser.new_context()
                 page = context.new_page()
 
-                linkedin_login(page, credentials)
+                login_success = linkedin_login(page, credentials)
+                if not login_success:
+                    print("Login failed or verification required. Please re-enter your credentials.")
+                    browser.close()
+                    # Prompt for credentials again
+                    credentials = get_credentials_from_terminal()
+                    retry_count += 1
+                    continue
 
                 # Resume from the last processed name
                 for index in range(last_processed_index, len(names)):
@@ -376,9 +396,9 @@ def open_linkedin_login_and_search(credentials: Dict[str, str], names: List[str]
 if __name__ == "__main__":
     print("Script started.")
     credentials = get_credentials_from_terminal()
-    alumni_directory = 'C:/Users/pagbilaf/linkedincrawler/data/AlumniLists'
+    alumni_directory = 'C:/Users/HP/AlumniTracer_playwright/data/AlumniLists'
     recent_csv = get_recent_csv(alumni_directory)
     names = get_names_from_csv(recent_csv)
-    output_directory = 'C:/Users/pagbilaf/linkedincrawler/data/ExtractedData'
+    output_directory = 'C:/Users/HP/AlumniTracer_playwright/data/ExtractedData'
     open_linkedin_login_and_search(credentials, names, output_directory)
     print("Script finished.")

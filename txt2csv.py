@@ -38,7 +38,7 @@ def save_names_to_csv():
     ]
 
     # Define the output file path
-    alumni_directory = 'c:/Users/pagbilaf/linkedincrawler/data/AlumniLists'
+    alumni_directory = 'c:/Users/HP/AlumniTracer_playwright/data/AlumniLists'
     print(f"Checking if directory exists: {alumni_directory}")
     if not os.path.exists(alumni_directory):
         print(f"Directory does not exist. Creating: {alumni_directory}")
