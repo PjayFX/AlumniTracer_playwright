@@ -6,9 +6,39 @@ from fuzzywuzzy import fuzz
 from fuzzywuzzy import process
 import csv
 from typing import List, Dict
+
+
 import logging
 
-def get_credentials_from_terminal() -> Dict[str, str]:
+# Configure logging to write only to a file, not to the terminal
+LOG_FILE = "alumni_tracer.log"
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    handlers=[logging.FileHandler(LOG_FILE, encoding='utf-8')]
+)
+
+
+def log_message(message: str, level: str = "info") -> None:
+    """
+    Logs a message to the log file only (not terminal).
+    """
+    if level == "info":
+        logging.info(message)
+    elif level == "warning":
+        logging.warning(message)
+    elif level == "error":
+        logging.error(message)
+    elif level == "debug":
+        logging.debug(message)
+
+def print_message(message: str) -> None:
+    """
+    Prints a message to the terminal only (not log).
+    """
+    print(message)
+
+def get_credentials_from_terminal() -> dict[str, str]:
     """
     Prompts the user to input login credentials via the terminal.
 
@@ -17,6 +47,9 @@ def get_credentials_from_terminal() -> Dict[str, str]:
     """
     username = input("Enter your LinkedIn username: ")
     password = input("Enter your LinkedIn password: ")
+    if username.strip().lower() == 'end' and password.strip().lower() == 'end':
+        print_message("Exiting script as requested at both username and password prompts.")
+        exit(0)
     return {'username': username, 'password': password}
 
 def get_recent_csv(directory: str) -> str:
@@ -34,7 +67,7 @@ def get_recent_csv(directory: str) -> str:
         raise FileNotFoundError("No CSV files found in the specified directory.")
     return max(files, key=os.path.getctime)
 
-def get_names_from_csv(file_path: str) -> List[str]:
+def get_names_from_csv(file_path: str) -> list[str]:
     """
     Reads names from a CSV file.
 
@@ -50,7 +83,7 @@ def get_names_from_csv(file_path: str) -> List[str]:
     else:
         raise ValueError("CSV file must contain a 'names' column.")
 
-def linkedin_login(page: Page, credentials: Dict[str, str]) -> bool:
+def linkedin_login(page: Page, credentials: dict[str, str]) -> bool:
     """
     Logs into LinkedIn using the provided credentials.
 
@@ -60,18 +93,22 @@ def linkedin_login(page: Page, credentials: Dict[str, str]) -> bool:
     Returns:
         bool: True if login successful, False if verification required.
     """
-    print("Opening LinkedIn login page...")
+    print_message("Opening LinkedIn login page...")
+    log_message("Opening LinkedIn login page...")
     page.goto("https://www.linkedin.com/login", timeout=60000)
 
     page.wait_for_selector("#username", timeout=60000)
-    print("LinkedIn login page loaded successfully.")
+    print_message("LinkedIn login page loaded successfully.")
+    log_message("LinkedIn login page loaded successfully.")
 
-    print("Entering login credentials...")
+    print_message("Entering login credentials...")
+    log_message("Entering login credentials...")
     page.fill("#username", credentials['username'])
     page.fill("#password", credentials['password'])
 
     page.click("button[type='submit']")
-    print("Login submitted successfully.")
+    print_message("Login submitted successfully.")
+    log_message("Login submitted successfully.")
 
     # Check for verification prompt
     try:
@@ -84,20 +121,25 @@ def linkedin_login(page: Page, credentials: Dict[str, str]) -> bool:
 
         for header in headers:
             text = header.inner_text().strip().lower().replace("’", "'")
-            print(f"Found h1: {text}")  # Debug print
+            print_message(f"Found h1: {text}")  # Debug print
+            log_message(f"Found h1: {text}", level="debug")
             if ("let's do a quick verification" in text) or ("let's do a quick security check" in text):
-                print("Verification required. Returning to input credentials.")
+                print_message("Verification required. Returning to input credentials.")
+                log_message("Verification required. Returning to input credentials.", level="warning")
                 return False  # Indicate login failed due to verification
-        print("No verification header matched.")
+        print_message("No verification header matched.")
+        log_message("No verification header matched.")
     except Exception as e:
-        print(f"Error checking for verification prompt: {e}")
+        print_message(f"Error checking for verification prompt: {e}")
+        log_message(f"Error checking for verification prompt: {e}", level="error")
 
     # Wait for LinkedIn homepage to load
     page.wait_for_selector("input[placeholder='Search']", timeout=60000)
-    print("LinkedIn homepage loaded successfully.")
+    print_message("LinkedIn homepage loaded successfully.")
+    log_message("LinkedIn homepage loaded successfully.")
     return True  # Indicate login succeeded
 
-def extract_profile_data(page: Page) -> Dict[str, str]:
+def extract_profile_data(page: Page) -> dict[str, str]:
     """
     Extracts relevant data from a LinkedIn profile page, including experiences, education, and skills.
 
@@ -182,7 +224,7 @@ def extract_profile_data(page: Page) -> Dict[str, str]:
     print("Profile data extracted successfully.")
     return profile_data
 
-def save_profile_data_to_csv(profile_data: List[Dict[str, str]], output_directory: str) -> None:
+def save_profile_data_to_csv(profile_data: list[dict[str, str]], output_directory: str) -> None:
     """
     Saves extracted profile data to a CSV file.
 
@@ -211,7 +253,7 @@ def save_profile_data_to_csv(profile_data: List[Dict[str, str]], output_director
             writer.writerows(profile_data)
         print(f"Extracted profiles saved to {alternative_file}")
 
-def save_data_incrementally(data_type: str, data: List[Dict[str, str]], file_path: str) -> None:
+def save_data_incrementally(data_type: str, data: list[dict[str, str]], file_path: str) -> None:
     """
     Saves data incrementally to a CSV file.
 
@@ -237,7 +279,7 @@ def save_data_incrementally(data_type: str, data: List[Dict[str, str]], file_pat
 
     print(f"{data_type.capitalize()} data saved incrementally to {file_path}.")
 
-def search_and_handle_profiles(page: Page, names: List[str], output_directory: str) -> None:
+def search_and_handle_profiles(page: Page, names: list[str], output_directory: str) -> None:
     """
     Searches for names on LinkedIn, extracts profile data, and saves data incrementally.
 
@@ -344,7 +386,7 @@ def search_and_handle_profiles(page: Page, names: List[str], output_directory: s
     save_data_incrementally('experiences', extracted_experiences, os.path.join(output_directory, 'Experiences.csv'))
     save_data_incrementally('skills', extracted_skills, os.path.join(output_directory, 'Skills.csv'))
 
-def open_linkedin_login_and_search(credentials: Dict[str, str], names: List[str], output_directory: str) -> None:
+def open_linkedin_login_and_search(credentials: dict[str, str], names: list[str], output_directory: str) -> None:
     """
     Logs into LinkedIn, searches for names, and handles profiles.
 
@@ -354,10 +396,7 @@ def open_linkedin_login_and_search(credentials: Dict[str, str], names: List[str]
         output_directory (str): Directory where extracted data will be saved.
     """
     last_processed_index = 0
-    max_retries = 3
-    retry_count = 0
-
-    while retry_count < max_retries:
+    while True:
         try:
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=False)
@@ -368,30 +407,40 @@ def open_linkedin_login_and_search(credentials: Dict[str, str], names: List[str]
                 if not login_success:
                     print("Login failed or verification required. Please re-enter your credentials.")
                     browser.close()
-                    # Prompt for credentials again
+                    #if the username and password are both 'end', it exits the script
                     credentials = get_credentials_from_terminal()
-                    retry_count += 1
                     continue
 
                 # Resume from the last processed name
-                for index in range(last_processed_index, len(names)):
-                    name = names[index]
-                    print(f"Processing profile: {name} (Index: {index})")
+                max_search_retries = 3
+                search_retry_count = 0
+                while search_retry_count < max_search_retries:
                     try:
-                        search_and_handle_profiles(page, [name], output_directory)
-                        last_processed_index = index + 1  # Update the last processed index
-                    except Exception as profile_error:
-                        print(f"Error processing profile {name}: {profile_error}")
-                        raise profile_error
-
-                browser.close()
-                print("Browser closed successfully.")
-                return
+                        for index in range(last_processed_index, len(names)):
+                            name = names[index]
+                            print(f"Processing profile: {name} (Index: {index})")
+                            try:
+                                search_and_handle_profiles(page, [name], output_directory)
+                                last_processed_index = index + 1  # Update the last processed index
+                            except Exception as profile_error:
+                                print(f"Error processing profile {name}: {profile_error}")
+                                raise profile_error
+                        browser.close()
+                        print("Browser closed successfully.")
+                        return
+                    except Exception as e:
+                        search_retry_count += 1
+                        print(f"An error occurred during searching/scraping: {e}. Retrying... ({search_retry_count}/{max_search_retries})")
+                        if search_retry_count >= max_search_retries:
+                            browser.close()
+                            print("Max retries for searching/scraping exceeded. Ending process.")
+                            return
+                        # Re-open browser and page for next retry
+                        browser.close()
+                        break
         except Exception as e:
-            retry_count += 1
-            print(f"An error occurred: {e}. Retrying... ({retry_count}/{max_retries})")
-
-    print("Max retries exceeded. Ending process.")
+            print(f"An error occurred: {e}. Please re-enter your credentials.")
+            credentials = get_credentials_from_terminal()
 
 if __name__ == "__main__":
     print("Script started.")
